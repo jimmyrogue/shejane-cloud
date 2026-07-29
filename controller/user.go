@@ -203,6 +203,11 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 	})
 }
 
+func resolveRegistrationInviter(affiliateCode string) (int, bool) {
+	inviterID, _ := model.GetUserIdByAffCode(strings.TrimSpace(affiliateCode))
+	return inviterID, !common.InviteRegisterEnabled || inviterID > 0
+}
+
 func Register(c *gin.Context) {
 	if !common.RegisterEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
@@ -261,7 +266,11 @@ func Register(c *gin.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	inviterId, ok := resolveRegistrationInviter(affCode)
+	if !ok {
+		common.ApiErrorI18n(c, i18n.MsgUserInviteRequired)
+		return
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,

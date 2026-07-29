@@ -39,7 +39,7 @@ func GetAllTokens(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := model.CountUserVisibleTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -74,6 +74,15 @@ func GetToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	managed, err := model.IsSheJaneManagedToken(userId, token.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if managed {
+		writeManagedTokenError(c, false)
+		return
+	}
 	common.ApiSuccess(c, buildMaskedTokenResponse(token))
 }
 
@@ -87,6 +96,15 @@ func GetTokenKey(c *gin.Context) {
 	token, err := model.GetTokenByIds(id, userId)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	managed, err := model.IsSheJaneManagedToken(userId, token.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if managed {
+		writeManagedTokenError(c, true)
 		return
 	}
 	common.ApiSuccess(c, gin.H{
@@ -236,7 +254,16 @@ func AddToken(c *gin.Context) {
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	managed, err := model.IsSheJaneManagedToken(userId, id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if managed {
+		writeManagedTokenError(c, false)
+		return
+	}
+	err = model.DeleteTokenById(id, userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -274,6 +301,15 @@ func UpdateToken(c *gin.Context) {
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	managed, err := model.IsSheJaneManagedToken(userId, cleanToken.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if managed {
+		writeManagedTokenError(c, false)
 		return
 	}
 	if token.Status == common.TokenStatusEnabled {
@@ -323,6 +359,15 @@ func DeleteTokenBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
+	managed, err := model.AnySheJaneManagedToken(userId, tokenBatch.Ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if managed {
+		writeManagedTokenError(c, false)
+		return
+	}
 	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -346,6 +391,15 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
+	managed, err := model.AnySheJaneManagedToken(userId, tokenBatch.Ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if managed {
+		writeManagedTokenError(c, true)
+		return
+	}
 	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -356,4 +410,14 @@ func GetTokenKeysBatch(c *gin.Context) {
 		keysMap[t.Id] = t.GetFullKey()
 	}
 	common.ApiSuccess(c, gin.H{"keys": keysMap})
+}
+
+func writeManagedTokenError(c *gin.Context, reveal bool) {
+	code := "TOKEN_MANAGED_EXTERNALLY"
+	message := "this token is managed by SheJane and must be changed through device management"
+	if reveal {
+		code = "TOKEN_MANAGED_KEY_NOT_REVEALABLE"
+		message = "this managed token key cannot be revealed"
+	}
+	c.JSON(http.StatusForbidden, gin.H{"success": false, "code": code, "message": message})
 }

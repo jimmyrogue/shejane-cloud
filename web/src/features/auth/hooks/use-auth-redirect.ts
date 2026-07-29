@@ -21,7 +21,7 @@ import i18n from 'i18next'
 
 import {
   getSavedLanguage,
-  sanitizeAuthRedirect,
+  resolveAuthRedirect,
 } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle } from '@/lib/api'
 import type { AuthBundle } from '@/stores/auth-store'
@@ -47,8 +47,7 @@ export function useAuthRedirect() {
       await i18n.changeLanguage(savedLang)
     }
 
-    const targetPath =
-      sanitizeAuthRedirect(redirectTo, window.location.origin) ?? '/dashboard'
+    const targetPath = resolveAuthRedirect(redirectTo, window.location.origin)
     navigate({ href: targetPath, replace: true })
   }
 

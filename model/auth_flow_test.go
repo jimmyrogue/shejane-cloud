@@ -107,3 +107,29 @@ func TestConsumeAuthFlowWithActionRollsBackTogether(t *testing.T) {
 	assert.Nil(t, flow.ConsumedAt)
 	require.NoError(t, ClaimExternalAuthAssertion(AuthFlowPurposeTelegramAssertion, "assertion-a", time.Now().Add(time.Minute)))
 }
+
+func TestCreateSheJaneAuthFlowWithTxRollsBackWithCaller(t *testing.T) {
+	truncateTables(t)
+	actionErr := errors.New("approval failed")
+	var token string
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		token, _, err = CreateAuthFlowWithTx(tx, AuthFlowCreate{
+			Purpose:   AuthFlowPurposeSheJaneAppAuthorization,
+			Intent:    AuthFlowIntentSheJaneCode,
+			UserId:    42,
+			SessionId: "session-a",
+			ExpiresAt: time.Now().Add(2 * time.Minute),
+		})
+		require.NoError(t, err)
+		return actionErr
+	})
+	assert.ErrorIs(t, err, actionErr)
+
+	_, err = GetAuthFlow(token, AuthFlowMatch{
+		Purpose: AuthFlowPurposeSheJaneAppAuthorization,
+		Intent:  AuthFlowIntentSheJaneCode,
+	})
+	assert.ErrorIs(t, err, ErrAuthFlowInvalid)
+}

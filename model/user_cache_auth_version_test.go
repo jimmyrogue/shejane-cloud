@@ -73,24 +73,90 @@ func TestUserAuthFenceRollbackExpiresAndRecovers(t *testing.T) {
 	assert.EqualValues(t, 1, cached.AuthVersion)
 }
 
+func TestUserQuotaFenceRollbackExpiresAndRecovers(t *testing.T) {
+	truncateTables(t)
+	server := useUserCacheMiniRedis(t)
+
+	user := User{
+		Username: "quota-fence-rollback", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 100,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, populateUserCache(user))
+
+	tx := DB.Begin()
+	require.NoError(t, tx.Error)
+	next, err := IncrementUserQuotaVersionWithTx(tx, user.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, next)
+	_, err = cacheGetUserBase(user.Id)
+	assert.ErrorIs(t, err, ErrUserQuotaCachePending)
+	require.NoError(t, tx.Rollback().Error)
+
+	server.FastForward(time.Duration(userAuthFenceTTLSeconds()+1) * time.Second)
+	assert.False(t, server.Exists(getUserQuotaFenceKey(user.Id)))
+	cached, err := GetUserCache(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 100, cached.Quota)
+	assert.EqualValues(t, 1, cached.QuotaVersion)
+}
+
 func TestPendingUserAuthFenceRejectsStaleCacheWrite(t *testing.T) {
 	server := useUserCacheMiniRedis(t)
 	const userID = 4201
 	require.NoError(t, SetUserAuthVersionFence(userID, 2))
 
 	err := writeUserCache(&UserBase{
-		Id: userID, Group: "default", Username: "stale", AuthVersion: 1,
+		Id: userID, Group: "default", Username: "stale", AuthVersion: 1, QuotaVersion: 1,
 	}, true)
 
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
 	assert.False(t, server.Exists(getUserCacheKey(userID)))
 }
 
+func TestPendingUserQuotaFenceRejectsDatabaseFallback(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+	user := User{
+		Username: "quota-fence-fallback", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 100,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, setUserQuotaVersionFence(user.Id, 2))
+
+	_, err := GetUserCache(user.Id)
+	assert.ErrorIs(t, err, ErrUserQuotaCachePending)
+}
+
+func TestPaidWalletQuotaFailsClosedWhenRedisFenceIsUnavailable(t *testing.T) {
+	truncateTables(t)
+	server := useUserCacheMiniRedis(t)
+	user := User{
+		Username: "paid-quota-redis-failure", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", Quota: 100,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	_, err := openSheJanePaidWallet(sheJanePaidOpeningInput{
+		UserId: user.Id, IdempotencyKey: "opening:redis-failure", ReferenceId: "wallet:redis-failure", CreatedAt: 100,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, setUserQuotaVersionFence(user.Id, user.QuotaVersion+2))
+	server.Close()
+	require.NoError(t, common.RDB.Close())
+	common.RDB = redis.NewClient(&redis.Options{
+		Addr: "127.0.0.1:1", DialTimeout: 10 * time.Millisecond,
+		ReadTimeout: 10 * time.Millisecond, WriteTimeout: 10 * time.Millisecond, MaxRetries: -1,
+	})
+	_, err = GetUserQuota(user.Id, false)
+	require.Error(t, err)
+}
+
 func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
 	useUserCacheMiniRedis(t)
 	const userID = 4202
 	require.NoError(t, writeUserCache(&UserBase{
-		Id: userID, Group: "current", Username: "cached", AuthVersion: 3,
+		Id: userID, Group: "current", Username: "cached", AuthVersion: 3, QuotaVersion: 1,
 	}, true))
 
 	err := updateUserCacheFieldAtVersion(userID, "Group", "stale", 2)

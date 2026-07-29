@@ -16,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -23,6 +25,7 @@ import (
 
 type tokenAPIResponse struct {
 	Success bool            `json:"success"`
+	Code    string          `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
 }
@@ -109,6 +112,9 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 
 	db := openTokenControllerTestDB(t)
 	migrateTokenControllerTestDB(t, db)
+	if err := db.AutoMigrate(&model.SheJaneDevice{}); err != nil {
+		t.Fatalf("failed to migrate SheJane device table: %v", err)
+	}
 	return db
 }
 
@@ -537,4 +543,91 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
 	}
+}
+
+func TestManagedSheJaneTokenRejectsGenericRevealUpdateAndDelete(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SheJaneDevice{}))
+	token := seedToken(t, db, 1, "managed-token", "managed1234token5678")
+	require.NoError(t, db.Create(&model.SheJaneDevice{
+		UserId: 1, TokenId: token.Id, ClientId: "shejane-desktop", Name: "Mac",
+		Platform: "macos", AppVersion: "0.1.8", CreatedAt: 1,
+	}).Error)
+
+	revealCtx, revealRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/key", nil, 1)
+	revealCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	GetTokenKey(revealCtx)
+	assert.Equal(t, http.StatusForbidden, revealRecorder.Code)
+	assert.Equal(t, "TOKEN_MANAGED_KEY_NOT_REVEALABLE", decodeAPIResponse(t, revealRecorder).Code)
+	assert.NotContains(t, revealRecorder.Body.String(), token.Key)
+
+	updateCtx, updateRecorder := newAuthenticatedContext(t, http.MethodPut, "/api/token", map[string]any{
+		"id": token.Id, "name": "changed", "expired_time": -1, "unlimited_quota": true,
+	}, 1)
+	UpdateToken(updateCtx)
+	assert.Equal(t, http.StatusForbidden, updateRecorder.Code)
+	assert.Equal(t, "TOKEN_MANAGED_EXTERNALLY", decodeAPIResponse(t, updateRecorder).Code)
+
+	deleteCtx, deleteRecorder := newAuthenticatedContext(t, http.MethodDelete, "/api/token/"+strconv.Itoa(token.Id), nil, 1)
+	deleteCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	DeleteToken(deleteCtx)
+	assert.Equal(t, http.StatusForbidden, deleteRecorder.Code)
+	assert.Equal(t, "TOKEN_MANAGED_EXTERNALLY", decodeAPIResponse(t, deleteRecorder).Code)
+
+	batchRevealCtx, batchRevealRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch/keys", TokenBatch{Ids: []int{token.Id}}, 1)
+	GetTokenKeysBatch(batchRevealCtx)
+	assert.Equal(t, http.StatusForbidden, batchRevealRecorder.Code)
+	assert.Equal(t, "TOKEN_MANAGED_KEY_NOT_REVEALABLE", decodeAPIResponse(t, batchRevealRecorder).Code)
+
+	batchDeleteCtx, batchDeleteRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch", TokenBatch{Ids: []int{token.Id}}, 1)
+	DeleteTokenBatch(batchDeleteCtx)
+	assert.Equal(t, http.StatusForbidden, batchDeleteRecorder.Code)
+	assert.Equal(t, "TOKEN_MANAGED_EXTERNALLY", decodeAPIResponse(t, batchDeleteRecorder).Code)
+
+	var stored model.Token
+	require.NoError(t, db.First(&stored, token.Id).Error)
+	assert.Equal(t, "managed-token", stored.Name)
+}
+
+func TestManagedSheJaneTokenIsHiddenFromGenericReadAPIs(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	ordinary := seedToken(t, db, 1, "ordinary-token", "ordinary1234token5678")
+	managed := seedToken(t, db, 1, "managed-token", "managed1234token5678")
+	require.NoError(t, db.Create(&model.SheJaneDevice{
+		UserId: 1, TokenId: managed.Id, ClientId: "shejane-desktop", Name: "Mac",
+		Platform: "macos", AppVersion: "0.1.8", CreatedAt: 1,
+	}).Error)
+
+	listCtx, listRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/?p=0&page_size=10", nil, 1)
+	GetAllTokens(listCtx)
+	require.Equal(t, http.StatusOK, listRecorder.Code)
+	var listData struct {
+		Items []model.Token `json:"items"`
+		Total int64         `json:"total"`
+	}
+	require.NoError(t, common.Unmarshal(decodeAPIResponse(t, listRecorder).Data, &listData))
+	assert.Equal(t, int64(1), listData.Total)
+	require.Len(t, listData.Items, 1)
+	assert.Equal(t, ordinary.Id, listData.Items[0].Id)
+	assert.NotContains(t, listRecorder.Body.String(), managed.Name)
+
+	searchCtx, searchRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/search?keyword=managed-token", nil, 1)
+	SearchTokens(searchCtx)
+	require.Equal(t, http.StatusOK, searchRecorder.Code)
+	var searchData struct {
+		Items []model.Token `json:"items"`
+		Total int64         `json:"total"`
+	}
+	require.NoError(t, common.Unmarshal(decodeAPIResponse(t, searchRecorder).Data, &searchData))
+	assert.Zero(t, searchData.Total)
+	assert.Empty(t, searchData.Items)
+	assert.NotContains(t, searchRecorder.Body.String(), managed.Name)
+
+	getCtx, getRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/"+strconv.Itoa(managed.Id), nil, 1)
+	getCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(managed.Id)}}
+	GetToken(getCtx)
+	assert.Equal(t, http.StatusForbidden, getRecorder.Code)
+	assert.Equal(t, "TOKEN_MANAGED_EXTERNALLY", decodeAPIResponse(t, getRecorder).Code)
+	assert.NotContains(t, getRecorder.Body.String(), managed.Name)
+	assert.NotContains(t, getRecorder.Body.String(), managed.Key)
 }

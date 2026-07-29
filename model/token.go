@@ -80,9 +80,14 @@ func (token *Token) GetIpLimits() []string {
 
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
-	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	query := withoutSheJaneManagedTokens(DB.Where("user_id = ?", userId), userId)
+	err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
+}
+
+func withoutSheJaneManagedTokens(query *gorm.DB, userId int) *gorm.DB {
+	managedTokenIds := DB.Model(&SheJaneDevice{}).Select("token_id").Where("user_id = ?", userId)
+	return query.Where("tokens.id NOT IN (?)", managedTokenIds)
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。
@@ -158,7 +163,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := withoutSheJaneManagedTokens(DB.Model(&Token{}).Where("user_id = ?", userId), userId)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -443,6 +448,13 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 func CountUserTokens(userId int) (int64, error) {
 	var total int64
 	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	return total, err
+}
+
+func CountUserVisibleTokens(userId int) (int64, error) {
+	var total int64
+	query := withoutSheJaneManagedTokens(DB.Model(&Token{}).Where("user_id = ?", userId), userId)
+	err := query.Count(&total).Error
 	return total, err
 }
 

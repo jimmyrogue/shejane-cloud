@@ -39,6 +39,10 @@ func TestMain(m *testing.M) {
 		&User{},
 		&UserSession{},
 		&AuthFlow{},
+		&SheJaneDevice{},
+		&SheJaneBalanceEntry{},
+		&SheJaneBillingReservation{},
+		&SheJanePaymentEvent{},
 		&ExternalIdentityClaim{},
 		&Token{},
 		&PasskeyCredential{},
@@ -60,6 +64,9 @@ func TestMain(m *testing.M) {
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
+	if err := ensureSheJanePaidDatabaseGuards(); err != nil {
+		panic("failed to protect SheJane balance journal: " + err.Error())
+	}
 
 	os.Exit(m.Run())
 }
@@ -69,6 +76,10 @@ func truncateTables(t *testing.T) {
 	t.Cleanup(func() {
 		DB.Exec("DELETE FROM tasks")
 		DB.Exec("DELETE FROM auth_flows")
+		DB.Exec("DELETE FROM she_jane_devices")
+		DB.Exec("DELETE FROM she_jane_payment_events")
+		DB.Exec("DELETE FROM she_jane_billing_reservations")
+		_ = clearSheJaneBalanceEntriesForTest()
 		DB.Exec("DELETE FROM external_identity_claims")
 		DB.Exec("DELETE FROM user_sessions")
 		DB.Exec("DELETE FROM passkey_credentials")

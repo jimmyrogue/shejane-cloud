@@ -1,10 +1,12 @@
 # SheJane native-app authorization design
 
-Status: P0 design complete; awaiting implementation approval.
+Status: Cloud contract `shejane-native-auth-v1` frozen on 2026-07-29 after P1A/P1B implementation and automated contract verification. Operator-backed pre-release and P1C packaged-app acceptance remain pending.
 
 Repository baseline: `afe16c64cd73853da1eda3bf236f15d69637b4bf` (`main`, 2026-07-28)
 
 Scope: SheJane Cloud authorization only. Billing, telemetry, payment, and SheJane Client implementation are out of scope.
+
+Contract freeze: Sections 3-7 are normative for Runtime integration. The six API endpoints, fixed client ID, exact loopback callback, request/response fields, public error codes, TTLs, and security headers cannot change within `shejane-native-auth-v1`. The official Cloud origin is intentionally not part of this document: Runtime must compile one operator-approved HTTPS origin and must not accept an origin returned by Client, browser, or Cloud. Any incompatible protocol change requires a new contract identifier and parallel rollout; documentation edits cannot silently redefine v1.
 
 ## 1. Decision summary
 

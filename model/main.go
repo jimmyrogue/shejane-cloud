@@ -264,6 +264,11 @@ func migrateDB() error {
 		&User{},
 		&UserSession{},
 		&AuthFlow{},
+		&SheJaneDevice{},
+		&SheJaneTelemetryToken{},
+		&SheJaneBalanceEntry{},
+		&SheJaneBillingReservation{},
+		&SheJanePaymentEvent{},
 		&ExternalIdentityClaim{},
 		&PasskeyCredential{},
 		&Option{},
@@ -299,6 +304,12 @@ func migrateDB() error {
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}
+	if err := InitializeUserQuotaVersions(); err != nil {
+		return err
+	}
+	if err := ensureSheJanePaidDatabaseGuards(); err != nil {
+		return err
+	}
 	if err := InitializeExternalIdentityClaims(); err != nil {
 		return err
 	}
@@ -327,6 +338,11 @@ func migrateDBFast() error {
 		{&User{}, "User"},
 		{&UserSession{}, "UserSession"},
 		{&AuthFlow{}, "AuthFlow"},
+		{&SheJaneDevice{}, "SheJaneDevice"},
+		{&SheJaneTelemetryToken{}, "SheJaneTelemetryToken"},
+		{&SheJaneBalanceEntry{}, "SheJaneBalanceEntry"},
+		{&SheJaneBillingReservation{}, "SheJaneBillingReservation"},
+		{&SheJanePaymentEvent{}, "SheJanePaymentEvent"},
 		{&ExternalIdentityClaim{}, "ExternalIdentityClaim"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
@@ -378,6 +394,12 @@ func migrateDBFast() error {
 		}
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
+		return err
+	}
+	if err := InitializeUserQuotaVersions(); err != nil {
+		return err
+	}
+	if err := ensureSheJanePaidDatabaseGuards(); err != nil {
 		return err
 	}
 	if err := InitializeExternalIdentityClaims(); err != nil {

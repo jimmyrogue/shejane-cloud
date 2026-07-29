@@ -204,6 +204,8 @@ func HandleOAuth(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
 		case *OAuthRegistrationDisabledError:
 			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
+		case *OAuthInvitationRequiredError:
+			common.ApiErrorI18n(c, i18n.MsgUserInviteRequired)
 		case *OAuthEmailAlreadyTakenError:
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 		default:
@@ -367,9 +369,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Status = common.UserStatusEnabled
 
 	// Handle affiliate code
-	inviterId := 0
-	if affiliateCode != "" {
-		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
+	inviterId, ok := resolveRegistrationInviter(affiliateCode)
+	if !ok {
+		return nil, &OAuthInvitationRequiredError{}
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
@@ -444,6 +446,12 @@ type OAuthRegistrationDisabledError struct{}
 
 func (e *OAuthRegistrationDisabledError) Error() string {
 	return "registration is disabled"
+}
+
+type OAuthInvitationRequiredError struct{}
+
+func (e *OAuthInvitationRequiredError) Error() string {
+	return "a valid invitation is required"
 }
 
 type OAuthEmailAlreadyTakenError struct{}

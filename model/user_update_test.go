@@ -46,9 +46,11 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
-		"quota":         gorm.Expr("quota - ?", 400),
-		"used_quota":    gorm.Expr("used_quota + ?", 400),
-		"request_count": gorm.Expr("request_count + ?", 1),
+		"quota":                 gorm.Expr("quota - ?", 400),
+		"quota_version":         gorm.Expr("quota_version + ?", 1),
+		"she_jane_paid_managed": true,
+		"used_quota":            gorm.Expr("used_quota + ?", 400),
+		"request_count":         gorm.Expr("request_count + ?", 1),
 	}).Error)
 
 	staleUser.DisplayName = "after"
@@ -58,6 +60,8 @@ func TestUserUpdateDoesNotOverwriteAccountingFields(t *testing.T) {
 	require.NoError(t, DB.First(&got, user.Id).Error)
 	assert.Equal(t, "after", got.DisplayName)
 	assert.Equal(t, 600, got.Quota)
+	assert.EqualValues(t, 2, got.QuotaVersion)
+	assert.True(t, got.SheJanePaidManaged)
 	assert.Equal(t, 420, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
 }
@@ -90,6 +94,20 @@ func TestUpdateUserSettingOnlyUpdatesSetting(t *testing.T) {
 	assert.Equal(t, 270, got.UsedQuota)
 	assert.Equal(t, 4, got.RequestCount)
 	assert.Equal(t, "zh", got.GetSetting().Language)
+}
+
+func TestBatchModeAppliesLegacyQuotaSynchronouslyBeforeReturning(t *testing.T) {
+	setupUserUpdateTestState(t)
+	common.BatchUpdateEnabled = true
+	user := User{Username: "batch-quota-sync", Password: "password", Status: common.UserStatusEnabled, Quota: 100}
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NoError(t, IncreaseUserQuota(user.Id, 10, false))
+	assert.Equal(t, 110, paidTestUserQuota(t, user.Id))
+	require.NoError(t, DecreaseUserQuota(user.Id, 5, false))
+	assert.Equal(t, 105, paidTestUserQuota(t, user.Id))
+	require.NoError(t, IncreaseUserQuota(user.Id, 0, false))
+	assert.Equal(t, 105, paidTestUserQuota(t, user.Id))
 }
 
 func TestEnsureEmailAvailableRejectsExistingEmailCaseInsensitive(t *testing.T) {

@@ -19,12 +19,24 @@ type WebAssets struct {
 	IndexPage []byte
 }
 
+func sheJaneAuthorizationPageSecurityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.URL.Path == "/shejane/authorize" {
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, private, max-age=0")
+			c.Header("Pragma", "no-cache")
+			c.Header("Referrer-Policy", "no-referrer")
+		}
+		c.Next()
+	}
+}
+
 func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
+	router.Use(sheJaneAuthorizationPageSecurityHeaders())
 	router.Use(static.Serve("/", frontendFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
@@ -32,7 +44,9 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 			controller.RelayNotFound(c)
 			return
 		}
-		c.Header("Cache-Control", "no-cache")
+		if c.Request.URL.Path != "/shejane/authorize" {
+			c.Header("Cache-Control", "no-cache")
+		}
 		c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
 	})
 }

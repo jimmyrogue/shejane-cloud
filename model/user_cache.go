@@ -11,19 +11,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const userCacheSchemaVersion = 2
+const userCacheSchemaVersion = 4
 
 type UserBase struct {
-	Id          int    `json:"id"`
-	Group       string `json:"group"`
-	Email       string `json:"email"`
-	Quota       int    `json:"quota"`
-	Status      int    `json:"status"`
-	Role        int    `json:"role"`
-	Username    string `json:"username"`
-	Setting     string `json:"setting"`
-	AuthVersion int64  `json:"-"`
-	CacheSchema int    `json:"-"`
+	Id                 int    `json:"id"`
+	Group              string `json:"group"`
+	Email              string `json:"email"`
+	Quota              int    `json:"quota"`
+	Status             int    `json:"status"`
+	Role               int    `json:"role"`
+	Username           string `json:"username"`
+	Setting            string `json:"setting"`
+	AuthVersion        int64  `json:"-"`
+	QuotaVersion       int64  `json:"-"`
+	SheJanePaidManaged bool   `json:"-"`
+	CacheSchema        int    `json:"-"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -107,11 +109,21 @@ func GetUserCache(userId int) (*UserBase, error) {
 	}
 	if common.RedisEnabled {
 		floor, floorErr := getUserAuthVersionFloor(userId)
+		if floorErr != nil && user.SheJanePaidManaged {
+			return nil, floorErr
+		}
 		if floorErr == nil && floor > user.AuthVersion {
 			return nil, ErrUserAuthCachePending
 		}
+		quotaFloor, quotaFloorErr := getUserQuotaVersionFloor(userId)
+		if quotaFloorErr != nil && user.SheJanePaidManaged {
+			return nil, quotaFloorErr
+		}
+		if quotaFloorErr == nil && quotaFloor > user.QuotaVersion {
+			return nil, ErrUserQuotaCachePending
+		}
 		if err := populateUserCache(*user); err != nil {
-			if errors.Is(err, ErrUserAuthCachePending) {
+			if user.SheJanePaidManaged || errors.Is(err, ErrUserAuthCachePending) || errors.Is(err, ErrUserQuotaCachePending) {
 				return nil, err
 			}
 			common.SysLog("failed to synchronously populate user cache: " + err.Error())
@@ -139,6 +151,21 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	}
 	if floor > userCache.AuthVersion {
 		return nil, ErrUserAuthCachePending
+	}
+	// ponytail: paid wallets use the database projection until a versioned
+	// cache-delta path replaces every legacy quota writer.
+	if userCache.SheJanePaidManaged {
+		return nil, ErrUserQuotaCacheBypass
+	}
+	if userCache.QuotaVersion <= 0 {
+		return nil, fmt.Errorf("user quota cache schema is stale")
+	}
+	quotaFloor, err := getUserQuotaVersionFloor(userId)
+	if err != nil {
+		return nil, err
+	}
+	if quotaFloor > userCache.QuotaVersion {
+		return nil, ErrUserQuotaCachePending
 	}
 	return &userCache, nil
 }
@@ -203,13 +230,6 @@ func updateUserStatusCache(userId int, status bool) error {
 		statusInt = common.UserStatusDisabled
 	}
 	return updateUserCacheField(userId, "Status", statusInt)
-}
-
-func updateUserQuotaCache(userId int, quota int) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	return common.RedisHSetField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
 }
 
 // RefreshUserGroupCache writes the database-authoritative group into an
