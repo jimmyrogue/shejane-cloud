@@ -392,6 +392,68 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 	}, payload.Data[0].SupportedEndpointTypes)
 }
 
+func TestListModelsDerivesSheJanePurposeFromNewAPIImageClassification(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     702,
+		Type:   constant.ChannelTypeNewAPI,
+		Key:    "new-api-key",
+		Status: common.ChannelStatusEnabled,
+		Name:   "new-api-channel",
+		Group:  "default",
+		Models: "gpt-image-2,gpt-image-2-vip,future-image-model,ordinary-model",
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-image-2", ChannelId: 702, Enabled: true},
+		{Group: "default", Model: "gpt-image-2-vip", ChannelId: 702, Enabled: true},
+		{Group: "default", Model: "future-image-model", ChannelId: 702, Enabled: true},
+		{Group: "default", Model: "ordinary-model", ChannelId: 702, Enabled: true},
+	}).Error)
+	require.NoError(t, db.Create(&model.Model{
+		ModelName: "future-image-model",
+		Endpoints: `{"image-generation":"/v1/images/generations"}`,
+	}).Error)
+	model.InvalidatePricingCache()
+	model.GetPricing()
+	t.Cleanup(model.InvalidatePricingCache)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+		"gpt-image-2":        true,
+		"gpt-image-2-vip":    true,
+		"future-image-model": true,
+		"ordinary-model":     true,
+	})
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	payload := decodeListModelsPayload(t, recorder)
+	modelsByID := make(map[string]dto.OpenAIModels, len(payload.Data))
+	for _, item := range payload.Data {
+		modelsByID[item.Id] = item
+	}
+	imageModel, ok := modelsByID["future-image-model"]
+	require.True(t, ok)
+	assert.Contains(t, imageModel.SupportedEndpointTypes, constant.EndpointTypeImageGeneration)
+	assert.Equal(t, []string{"image_generation"}, imageModel.Capabilities)
+	assert.Equal(t, []string{"image_generation"}, imageModel.RecommendedFor)
+	for _, modelID := range []string{"gpt-image-2", "gpt-image-2-vip"} {
+		imageModel, ok = modelsByID[modelID]
+		require.True(t, ok)
+		assert.Contains(t, imageModel.SupportedEndpointTypes, constant.EndpointTypeImageGeneration)
+		assert.Equal(t, []string{"image_generation"}, imageModel.Capabilities)
+		assert.Equal(t, []string{"image_generation"}, imageModel.RecommendedFor)
+	}
+	assert.Empty(t, modelsByID["ordinary-model"].Capabilities)
+	assert.Empty(t, modelsByID["ordinary-model"].RecommendedFor)
+}
+
 func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{

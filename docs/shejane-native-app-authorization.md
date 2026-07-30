@@ -191,7 +191,8 @@ Normative consequences:
    - locks the user row, enforces the existing maximum Token count, generates a normal New API key, and inserts the Token and `SheJaneDevice` row.
 4. Code consumption, Token insert, and device insert commit together. Any validation or insert error rolls back all three.
 5. Cloud returns `sk-<stored Token.Key>` once. If the network response is lost after commit, the code remains consumed and the key is not recoverable; the user revokes that device record and starts again.
-6. Runtime stores the key in the operating-system credential store, closes the loopback listener, uses the compiled immutable SheJane Cloud base URL, calls existing `/v1/models`, and runs existing capability verification.
+6. Runtime stores the key in the operating-system credential store, closes the loopback listener, uses the compiled immutable SheJane Cloud base URL, calls existing `/v1/models`, and retains existing active capability verification where required.
+7. The official model-list response may add `capabilities` and `recommended_for` string arrays. Cloud derives `image_generation` from NewAPI's final `supported_endpoint_types` whenever it contains `image-generation`; operators classify future models through NewAPI's model endpoint configuration, while Runtime trusts the derived fields only from its compiled immutable Cloud origin and does not ask ordinary users to classify models manually.
 
 ## 5. Endpoint contracts and middleware
 

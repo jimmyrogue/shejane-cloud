@@ -166,6 +166,13 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 		oaiModel.OwnedBy = owner
 	}
 	oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(modelName)
+	for _, endpointType := range oaiModel.SupportedEndpointTypes {
+		if endpointType == constant.EndpointTypeImageGeneration {
+			oaiModel.Capabilities = []string{"image_generation"}
+			oaiModel.RecommendedFor = []string{"image_generation"}
+			break
+		}
+	}
 	return oaiModel
 }
 

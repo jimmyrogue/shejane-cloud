@@ -2406,6 +2406,26 @@
             "type": "string",
             "description": "模型所有者",
             "example": "openai"
+          },
+          "capabilities": {
+            "type": "array",
+            "description": "根据模型端点类型派生的 SheJane 官方模型用途",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "image_generation"
+            ]
+          },
+          "recommended_for": {
+            "type": "array",
+            "description": "根据模型端点类型派生的 SheJane 官方模型推荐用途",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "image_generation"
+            ]
           }
         }
       },
