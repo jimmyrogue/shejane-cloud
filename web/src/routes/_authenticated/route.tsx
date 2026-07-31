@@ -19,7 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AuthenticatedLayout } from '@/components/layout'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+
+const USER_CONSOLE_PREFIXES = ['/devices', '/keys', '/profile', '/wallet']
+
+export function isUserConsolePath(pathname: string): boolean {
+  if (pathname === '/dashboard' || pathname === '/dashboard/overview') {
+    return true
+  }
+
+  return USER_CONSOLE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
+}
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ location }) => {
@@ -29,6 +42,14 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({
         to: '/sign-in',
         search: { redirect: location.href },
+      })
+    }
+
+    if (auth.user.role < ROLE.ADMIN && !isUserConsolePath(location.pathname)) {
+      throw redirect({
+        to: '/dashboard/$section',
+        params: { section: 'overview' },
+        replace: true,
       })
     }
   },

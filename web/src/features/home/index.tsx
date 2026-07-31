@@ -26,7 +26,11 @@ import { useTheme } from '@/context/theme-provider'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { CTA, Features, Hero, HowItWorks, Stats } from './components'
+import {
+  SHEJANE_MARK_DATA_URI,
+  SheJaneHome,
+  SheJaneMark,
+} from './components/shejane-home'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
@@ -57,6 +61,18 @@ export function Home() {
       syncIframePreferences()
     }
   }, [isUrl, syncIframePreferences])
+
+  useEffect(() => {
+    if (!isLoaded || content) {
+      return
+    }
+
+    const previousTitle = document.title
+    document.title = 'SheJane'
+    return () => {
+      document.title = previousTitle
+    }
+  }, [content, isLoaded])
 
   if (!isLoaded) {
     return (
@@ -121,13 +137,24 @@ export function Home() {
   }
 
   return (
-    <PublicLayout showMainContainer={false}>
-      <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
-      <Footer />
+    <PublicLayout
+      showMainContainer={false}
+      siteName='SheJane'
+      logo={<SheJaneMark className='text-foreground size-7' />}
+      navLinks={[
+        { title: 'Pricing', href: '/pricing' },
+        { title: 'About', href: '/about' },
+      ]}
+      showThemeSwitch={false}
+      showNotifications={false}
+    >
+      <SheJaneHome isAuthenticated={isAuthenticated} />
+      <Footer
+        name='SheJane'
+        logo={SHEJANE_MARK_DATA_URI}
+        description={t('Your AI assistant for everyday work.')}
+        copyright={t('Your AI assistant for everyday work.')}
+      />
     </PublicLayout>
   )
 }

@@ -275,7 +275,7 @@ export function AuthorizationPage(props: AuthorizationPageProps) {
   }
 
   return (
-    <main className='bg-background text-foreground flex min-h-svh items-center px-4 py-10'>
+    <main className='shejane-user-surface bg-background text-foreground flex min-h-svh items-center px-4 py-10'>
       <div className='mx-auto w-full max-w-xl'>
         <h1 className='mb-6 text-center text-2xl font-semibold'>
           {t('SheJane Cloud authorization')}

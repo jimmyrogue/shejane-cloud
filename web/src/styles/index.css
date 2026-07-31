@@ -30,6 +30,53 @@ For commercial licensing, please contact support@quantumnous.com
 @import './theme.css';
 @import './theme-presets.css';
 
+/* SheJane's paper-and-ink language is scoped to ordinary customer surfaces.
+ * The complete administrator workspace keeps the operator's configured theme. */
+body:has(.shejane-user-surface),
+.shejane-user-surface {
+  color-scheme: light;
+  --background: #faf9f6;
+  --foreground: #2b2a28;
+  --card: #ffffff;
+  --card-foreground: #2b2a28;
+  --popover: #ffffff;
+  --popover-foreground: #2b2a28;
+  --primary: #2b2a28;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f1ec;
+  --secondary-foreground: #2b2a28;
+  --muted: #f3f1ec;
+  --muted-foreground: #6f6b63;
+  --accent: #efede7;
+  --accent-foreground: #2b2a28;
+  --destructive: #b3532f;
+  --destructive-foreground: #ffffff;
+  --success: #5e7a6e;
+  --success-foreground: #ffffff;
+  --warning: #8a6d3b;
+  --warning-foreground: #ffffff;
+  --info: #4a6b8a;
+  --info-foreground: #ffffff;
+  --neutral: #a8a39a;
+  --neutral-foreground: #2b2a28;
+  --border: #e8e5de;
+  --input: #d9d5cc;
+  --ring: #2b2a28;
+  --chart-1: #2b2a28;
+  --chart-2: #6f6b63;
+  --chart-3: #5e7a6e;
+  --chart-4: #8a6d3b;
+  --chart-5: #4a6b8a;
+  --overview-accent-1: #6f6b63;
+  --overview-accent-2: #5e7a6e;
+  --overview-accent-3: #8a6d3b;
+  --radius: 0.625rem;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC',
+    'Source Han Sans SC', 'Helvetica Neue', sans-serif;
+  font-family: var(--font-body);
+}
+
 /* Shiki dual themes: token colors follow dark theme (pre background stays `bg-background` on the block) */
 @layer components {
   .shiki span {
