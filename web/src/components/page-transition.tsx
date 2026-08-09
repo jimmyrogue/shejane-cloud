@@ -67,7 +67,7 @@ export function AnimatedOutlet() {
 
   if (shouldReduce) {
     return (
-      <div className='flex min-h-0 flex-1 flex-col'>
+      <div className='flex min-h-0 min-w-0 flex-1 flex-col'>
         <Outlet />
       </div>
     )
@@ -79,7 +79,7 @@ export function AnimatedOutlet() {
       initial={MOTION_VARIANTS.pageEnter.initial}
       animate={MOTION_VARIANTS.pageEnter.animate}
       transition={MOTION_TRANSITION.fast}
-      className='flex min-h-0 flex-1 flex-col'
+      className='flex min-h-0 min-w-0 flex-1 flex-col'
     >
       <Outlet />
     </motion.div>
@@ -132,7 +132,7 @@ export function TableStaggerContainer(props: StaggerContainerProps) {
   const shouldReduce = useReducedMotion()
 
   if (shouldReduce) {
-    return <>{props.children}</>
+    return props.children
   }
 
   return (

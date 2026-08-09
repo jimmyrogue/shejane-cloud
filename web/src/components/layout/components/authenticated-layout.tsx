@@ -72,7 +72,7 @@ function UserConsoleHeader() {
 
   return (
     <header className='border-border/80 bg-background/95 sticky top-0 z-40 h-14 shrink-0 border-b backdrop-blur'>
-      <div className='mx-auto flex h-full w-full max-w-7xl items-center gap-3 px-3 sm:px-5'>
+      <div className='flex h-full w-full min-w-0 items-center gap-3 px-3 sm:px-5'>
         <SystemBrand variant='inline' />
         <TopNav links={links} className='ms-3' />
         <div className='ms-auto flex items-center gap-1'>
@@ -91,9 +91,9 @@ function UserConsoleLayout(props: AuthenticatedLayoutProps) {
       <UserConsoleHeader />
       <div
         id='content'
-        className='@container/content flex min-h-0 flex-1 overflow-hidden'
+        className='@container/content flex min-h-0 w-full min-w-0 flex-1 overflow-hidden'
       >
-        <div className='mx-auto flex min-h-0 w-full max-w-7xl flex-1'>
+        <div className='flex min-h-0 w-full min-w-0 flex-1'>
           {props.children ?? <AnimatedOutlet />}
         </div>
       </div>
