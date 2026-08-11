@@ -47,6 +47,12 @@ var openAIHostedWebSearchModels = map[string]struct{}{
 var sheJaneHostedWebSearchModels = map[string]struct{}{
 	"gpt-5.6-luna": {}, "gpt-5.6-sol": {}, "gpt-5.6-terra": {},
 }
+var openAIGPT56ReasoningModels = map[string]struct{}{
+	"gpt-5.6": {}, "gpt-5.6-luna": {}, "gpt-5.6-sol": {}, "gpt-5.6-terra": {},
+}
+var sheJaneGPT56ReasoningModels = map[string]struct{}{
+	"gpt-5.6-luna": {}, "gpt-5.6-sol": {}, "gpt-5.6-terra": {},
+}
 var openAIModelSnapshotSuffix = regexp.MustCompile(`-20\d{2}-\d{2}-\d{2}$`)
 
 func init() {
@@ -213,10 +219,23 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 			}
 		default:
 			oaiModel.Reasoning = &dto.ModelReasoningProfile{
-				Supported: true, Modes: []string{"off", "high", "max"}, DefaultMode: "off",
+				Supported: true, Modes: []string{"off", "high", "max"}, DefaultMode: "high",
 				StreamField: &streamField, ToolRoundtripRequired: true,
 				DisplayPolicy: "activity_only",
 			}
+		}
+	}
+	reasoningModelName := openAIModelSnapshotSuffix.ReplaceAllString(modelName, "")
+	_, sheJaneGPT56 := sheJaneGPT56ReasoningModels[modelName]
+	_, openAIGPT56 := openAIGPT56ReasoningModels[reasoningModelName]
+	if sheJaneGPT56 || (openAIGPT56 && strings.EqualFold(oaiModel.OwnedBy, "openai")) {
+		streamField := "content_blocks"
+		oaiModel.ProviderFamily = "openai"
+		oaiModel.Reasoning = &dto.ModelReasoningProfile{
+			Supported:   true,
+			Modes:       []string{"off", "low", "medium", "high", "xhigh", "max"},
+			DefaultMode: "medium", StreamField: &streamField,
+			ToolRoundtripRequired: true, DisplayPolicy: "activity_only",
 		}
 	}
 	if slices.Contains(oaiModel.SupportedEndpointTypes, constant.EndpointTypeOpenAIResponse) {

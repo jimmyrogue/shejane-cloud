@@ -14,6 +14,9 @@ func TestResponsesRelayPreservesHostedWebSearch(t *testing.T) {
 		Model:   "gpt-5.6-luna",
 		Tools:   []byte(`[{"type":"web_search"}]`),
 		Include: []byte(`["web_search_call.action.sources"]`),
+		Reasoning: &dto.Reasoning{
+			Effort: "xhigh",
+		},
 	}
 
 	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(
@@ -27,4 +30,6 @@ func TestResponsesRelayPreservesHostedWebSearch(t *testing.T) {
 	require.True(t, ok)
 	assert.JSONEq(t, `[{"type":"web_search"}]`, string(responsesRequest.Tools))
 	assert.JSONEq(t, `["web_search_call.action.sources"]`, string(responsesRequest.Include))
+	require.NotNil(t, responsesRequest.Reasoning)
+	assert.Equal(t, "xhigh", responsesRequest.Reasoning.Effort)
 }

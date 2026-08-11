@@ -490,7 +490,7 @@ func TestListModelsDeclaresDeepSeekV4ReasoningContract(t *testing.T) {
 	assert.False(t, base.HostedWebSearch.FullSources)
 	assert.Equal(t, "deepseek", base.ProviderFamily)
 	assert.Equal(t, []string{"off", "high", "max"}, base.Reasoning.Modes)
-	assert.Equal(t, "off", base.Reasoning.DefaultMode)
+	assert.Equal(t, "high", base.Reasoning.DefaultMode)
 	assert.Equal(t, 1_000_000, *base.MaxInputTokens)
 	assert.Equal(t, 384_000, *base.MaxOutputTokens)
 
@@ -515,10 +515,12 @@ func TestListModelsDeclaresHostedSearchOnlyForVerifiedResponsesModels(t *testing
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.Channel{
 		Id: 44, Type: constant.ChannelTypeNewAPI, Key: "test", Status: common.ChannelStatusEnabled,
-		Name: "responses", Group: "default", Models: "gpt-5.6-luna,gpt-4.1,gpt-4o-mini",
+		Name: "responses", Group: "default", Models: "gpt-5.6-luna,gpt-5.6-sol,gpt-5.6-terra,gpt-4.1,gpt-4o-mini",
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Group: "default", Model: "gpt-5.6-luna", ChannelId: 44, Enabled: true},
+		{Group: "default", Model: "gpt-5.6-sol", ChannelId: 44, Enabled: true},
+		{Group: "default", Model: "gpt-5.6-terra", ChannelId: 44, Enabled: true},
 		{Group: "default", Model: "gpt-4.1", ChannelId: 44, Enabled: true},
 		{Group: "default", Model: "gpt-4o-mini", ChannelId: 44, Enabled: true},
 	}).Error)
@@ -541,6 +543,13 @@ func TestListModelsDeclaresHostedSearchOnlyForVerifiedResponsesModels(t *testing
 	require.NotNil(t, luna.HostedWebSearch)
 	assert.Equal(t, "verified", luna.HostedWebSearch.Verification)
 	assert.True(t, luna.HostedWebSearch.FullSources)
+	for _, modelName := range []string{"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"} {
+		gpt56 := modelsByID[modelName]
+		require.NotNil(t, gpt56.Reasoning)
+		assert.Equal(t, "openai", gpt56.ProviderFamily)
+		assert.Equal(t, []string{"off", "low", "medium", "high", "xhigh", "max"}, gpt56.Reasoning.Modes)
+		assert.Equal(t, "medium", gpt56.Reasoning.DefaultMode)
+	}
 	assert.Nil(t, modelsByID["gpt-4.1"].HostedWebSearch)
 	assert.Nil(t, modelsByID["gpt-4o-mini"].HostedWebSearch)
 }
