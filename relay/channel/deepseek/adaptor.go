@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,6 +58,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.RelayMode == constant.RelayModeResponses {
+		return strings.TrimRight(info.ChannelBaseUrl, "/") + "/responses", nil
+	}
 	fimBaseUrl := info.ChannelBaseUrl
 	switch info.RelayFormat {
 	case types.RelayFormatClaude:
@@ -159,8 +163,52 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	// TODO implement me
-	return nil, errors.New("not implemented")
+	modelName := request.Model
+	if info != nil && info.ChannelMeta != nil && info.UpstreamModelName != "" {
+		modelName = info.UpstreamModelName
+	}
+	baseModel, thinkingType, effort, ok := reasoning.ParseDeepSeekV4ThinkingSuffix(modelName)
+	if ok {
+		if thinkingType == "disabled" {
+			effort = "none"
+		}
+		request.Model = baseModel
+		request.Reasoning = &dto.Reasoning{Effort: effort}
+	}
+	request.Include = nil
+	request.Conversation = nil
+	request.ContextManagement = nil
+	request.PreviousResponseID = ""
+	request.Store = nil
+	request.MaxToolCalls = nil
+	if len(request.Tools) > 0 {
+		var tools []map[string]json.RawMessage
+		if err := common.Unmarshal(request.Tools, &tools); err != nil {
+			return nil, fmt.Errorf("invalid Responses tools: %w", err)
+		}
+		for index, tool := range tools {
+			var toolType string
+			if err := common.Unmarshal(tool["type"], &toolType); err != nil {
+				return nil, fmt.Errorf("invalid Responses tool type: %w", err)
+			}
+			if toolType == "web_search" || toolType == "web_search_2025_08_26" {
+				typeJSON, _ := common.Marshal(toolType)
+				tools[index] = map[string]json.RawMessage{"type": typeJSON}
+			}
+		}
+		var err error
+		request.Tools, err = common.Marshal(tools)
+		if err != nil {
+			return nil, fmt.Errorf("encode Responses tools: %w", err)
+		}
+	}
+	if info != nil && ok {
+		if info.ChannelMeta != nil {
+			info.UpstreamModelName = baseModel
+		}
+		info.ReasoningEffort = effort
+	}
+	return request, nil
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {

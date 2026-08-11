@@ -36,6 +36,15 @@ func IsOpenAIResponseOnlyModel(modelName string) bool {
 	return false
 }
 
+func IsDeepSeekV4FlashModel(modelName string) bool {
+	switch modelName {
+	case "deepseek-v4-flash", "deepseek-v4-flash-none", "deepseek-v4-flash-max":
+		return true
+	default:
+		return false
+	}
+}
+
 func IsImageGenerationModel(modelName string) bool {
 	modelName = strings.ToLower(modelName)
 	for _, m := range ImageGenerationModels {

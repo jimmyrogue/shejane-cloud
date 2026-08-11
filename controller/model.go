@@ -3,6 +3,8 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +31,23 @@ import (
 var openAIModels []dto.OpenAIModels
 var openAIModelsMap map[string]dto.OpenAIModels
 var channelId2Models map[int][]string
+var deepSeekV4Models = map[string]struct{}{
+	"deepseek-v4-flash":      {},
+	"deepseek-v4-flash-none": {},
+	"deepseek-v4-flash-max":  {},
+	"deepseek-v4-pro":        {},
+	"deepseek-v4-pro-none":   {},
+	"deepseek-v4-pro-max":    {},
+}
+var openAIHostedWebSearchModels = map[string]struct{}{
+	"gpt-4.1": {}, "gpt-4.1-mini": {},
+	"gpt-5.6-luna": {}, "gpt-5.6-sol": {}, "gpt-5.6-terra": {},
+	"o4-mini": {},
+}
+var sheJaneHostedWebSearchModels = map[string]struct{}{
+	"gpt-5.6-luna": {}, "gpt-5.6-sol": {}, "gpt-5.6-terra": {},
+}
+var openAIModelSnapshotSuffix = regexp.MustCompile(`-20\d{2}-\d{2}-\d{2}$`)
 
 func init() {
 	// https://platform.openai.com/docs/models/model-endpoint-compatibility
@@ -171,6 +190,45 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 			oaiModel.Capabilities = []string{"image_generation"}
 			oaiModel.RecommendedFor = []string{"image_generation"}
 			break
+		}
+	}
+	if _, ok := deepSeekV4Models[modelName]; ok {
+		streamField := "reasoning_content"
+		maxInputTokens := 1_000_000
+		maxOutputTokens := 384_000
+		oaiModel.ProviderFamily = "deepseek"
+		oaiModel.MaxInputTokens = &maxInputTokens
+		oaiModel.MaxOutputTokens = &maxOutputTokens
+		switch {
+		case strings.HasSuffix(modelName, "-none"):
+			oaiModel.Reasoning = &dto.ModelReasoningProfile{
+				Supported: false, Modes: []string{"off"}, DefaultMode: "off",
+				DisplayPolicy: "activity_only",
+			}
+		case strings.HasSuffix(modelName, "-max"):
+			oaiModel.Reasoning = &dto.ModelReasoningProfile{
+				Supported: true, Modes: []string{"max"}, DefaultMode: "max",
+				StreamField: &streamField, ToolRoundtripRequired: true,
+				DisplayPolicy: "activity_only",
+			}
+		default:
+			oaiModel.Reasoning = &dto.ModelReasoningProfile{
+				Supported: true, Modes: []string{"off", "high", "max"}, DefaultMode: "off",
+				StreamField: &streamField, ToolRoundtripRequired: true,
+				DisplayPolicy: "activity_only",
+			}
+		}
+	}
+	if slices.Contains(oaiModel.SupportedEndpointTypes, constant.EndpointTypeOpenAIResponse) {
+		_, sheJaneVerified := sheJaneHostedWebSearchModels[modelName]
+		_, openAIVerified := openAIHostedWebSearchModels[openAIModelSnapshotSuffix.ReplaceAllString(modelName, "")]
+		switch {
+		case common.IsDeepSeekV4FlashModel(modelName) && strings.EqualFold(oaiModel.OwnedBy, "deepseek"):
+			oaiModel.HostedWebSearch = &dto.ModelHostedWebSearchProfile{Verification: "verified"}
+		case sheJaneVerified:
+			oaiModel.HostedWebSearch = &dto.ModelHostedWebSearchProfile{Verification: "verified", FullSources: true}
+		case openAIVerified && strings.EqualFold(oaiModel.OwnedBy, "openai"):
+			oaiModel.HostedWebSearch = &dto.ModelHostedWebSearchProfile{Verification: "verified", FullSources: true}
 		}
 	}
 	return oaiModel

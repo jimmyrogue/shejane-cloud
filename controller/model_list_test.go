@@ -454,6 +454,97 @@ func TestListModelsDerivesSheJanePurposeFromNewAPIImageClassification(t *testing
 	assert.Empty(t, modelsByID["ordinary-model"].RecommendedFor)
 }
 
+func TestListModelsDeclaresDeepSeekV4ReasoningContract(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 43, Type: constant.ChannelTypeDeepSeek, Key: "test", Status: common.ChannelStatusEnabled,
+		Name: "deepseek", Group: "default",
+		Models: "deepseek-v4-flash,deepseek-v4-flash-none,deepseek-v4-flash-max,deepseek-v4-flash-attacker",
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "deepseek-v4-flash", ChannelId: 43, Enabled: true},
+		{Group: "default", Model: "deepseek-v4-flash-none", ChannelId: 43, Enabled: true},
+		{Group: "default", Model: "deepseek-v4-flash-max", ChannelId: 43, Enabled: true},
+		{Group: "default", Model: "deepseek-v4-flash-attacker", ChannelId: 43, Enabled: true},
+	}).Error)
+	model.InitChannelCache()
+	model.GetPricing()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	payload := decodeListModelsPayload(t, recorder)
+	modelsByID := make(map[string]dto.OpenAIModels, len(payload.Data))
+	for _, item := range payload.Data {
+		modelsByID[item.Id] = item
+	}
+	base := modelsByID["deepseek-v4-flash"]
+	require.NotNil(t, base.Reasoning)
+	require.NotNil(t, base.HostedWebSearch)
+	assert.Equal(t, "verified", base.HostedWebSearch.Verification)
+	assert.False(t, base.HostedWebSearch.FullSources)
+	assert.Equal(t, "deepseek", base.ProviderFamily)
+	assert.Equal(t, []string{"off", "high", "max"}, base.Reasoning.Modes)
+	assert.Equal(t, "off", base.Reasoning.DefaultMode)
+	assert.Equal(t, 1_000_000, *base.MaxInputTokens)
+	assert.Equal(t, 384_000, *base.MaxOutputTokens)
+
+	none := modelsByID["deepseek-v4-flash-none"]
+	require.NotNil(t, none.Reasoning)
+	assert.False(t, none.Reasoning.Supported)
+	assert.Equal(t, []string{"off"}, none.Reasoning.Modes)
+
+	max := modelsByID["deepseek-v4-flash-max"]
+	require.NotNil(t, max.Reasoning)
+	assert.Equal(t, []string{"max"}, max.Reasoning.Modes)
+	assert.Equal(t, "max", max.Reasoning.DefaultMode)
+
+	spoofed := modelsByID["deepseek-v4-flash-attacker"]
+	assert.Empty(t, spoofed.ProviderFamily)
+	assert.Nil(t, spoofed.Reasoning)
+	assert.Nil(t, spoofed.HostedWebSearch)
+}
+
+func TestListModelsDeclaresHostedSearchOnlyForVerifiedResponsesModels(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 44, Type: constant.ChannelTypeNewAPI, Key: "test", Status: common.ChannelStatusEnabled,
+		Name: "responses", Group: "default", Models: "gpt-5.6-luna,gpt-4.1,gpt-4o-mini",
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-5.6-luna", ChannelId: 44, Enabled: true},
+		{Group: "default", Model: "gpt-4.1", ChannelId: 44, Enabled: true},
+		{Group: "default", Model: "gpt-4o-mini", ChannelId: 44, Enabled: true},
+	}).Error)
+	model.InitChannelCache()
+	model.GetPricing()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	payload := decodeListModelsPayload(t, recorder)
+	modelsByID := make(map[string]dto.OpenAIModels, len(payload.Data))
+	for _, item := range payload.Data {
+		modelsByID[item.Id] = item
+	}
+	luna := modelsByID["gpt-5.6-luna"]
+	require.NotNil(t, luna.HostedWebSearch)
+	assert.Equal(t, "verified", luna.HostedWebSearch.Verification)
+	assert.True(t, luna.HostedWebSearch.FullSources)
+	assert.Nil(t, modelsByID["gpt-4.1"].HostedWebSearch)
+	assert.Nil(t, modelsByID["gpt-4o-mini"].HostedWebSearch)
+}
+
 func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{
