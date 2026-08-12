@@ -89,4 +89,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun test --max-concurrency 1
+        run: |
+          find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 \
+            | sort -z \
+            | xargs -0 -r -n 1 bun test

@@ -105,7 +105,9 @@ go build ./...
 go vet ./model ./service ./controller ./router
 cd web
 bun install --frozen-lockfile
-bun test --max-concurrency 1
+find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 \
+  | sort -z \
+  | xargs -0 -r -n 1 bun test
 bun run i18n:sync
 bun run typecheck
 bun run build
