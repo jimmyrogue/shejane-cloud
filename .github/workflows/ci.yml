@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
   pull_request:
     types: [opened, synchronize, closed]
 
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   backend:
     name: Backend vet, build, and test
-    if: github.event_name == 'push' || github.event.action != 'closed' || github.event.pull_request.merged == true
+    if: github.event_name != 'pull_request' || github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -62,7 +63,7 @@ jobs:
 
   frontend:
     name: Frontend typecheck and test
-    if: github.event_name == 'push' || github.event.action != 'closed' || github.event.pull_request.merged == true
+    if: github.event_name != 'pull_request' || github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
