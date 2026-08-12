@@ -111,6 +111,30 @@ bun run typecheck
 bun run build
 ```
 
+### Automated production deployment
+
+Pushes to `main` run the full `CI` workflow. A successful push run triggers
+`Deploy production`, which checks out the reviewed commit, builds the embedded
+frontend and static Linux binary, and authenticates to AWS through GitHub OIDC.
+The workflow uploads immutable, encrypted artifacts to the private deployment
+bucket and uses SSM to run the versioned canary/promotion sequence on the single
+production instance. No long-lived AWS credential is stored in GitHub.
+
+The AWS trust policy accepts only the `jimmyrogue/shejane-cloud` production
+environment, whose deployment branch policy accepts only `main`. The deployment
+role can write only the release prefix in the deployment bucket and send
+`AWS-RunShellScript` only to the production instance. The instance role can only
+read release artifacts. The role ARN, bucket, and instance ID live in GitHub
+Environment variables, not the public workflow. Environment protection and
+workflow concurrency prevent overlapping promotions.
+
+Every promotion runs the validated database backup service, copies the current
+production environment file with mode `0600`, verifies artifact SHA-256, starts
+the candidate on loopback port `3002`, promotes it to `3001`, and updates the
+`current` symlink only after health succeeds. A failed promotion restores the
+previous versioned binary. `workflow_dispatch` is the manual retry path and is
+accepted only from `main`.
+
 ## 7. Rollback
 
 1. Stop distributing or disable the Runtime official-service entry first; BYOK remains available.
